@@ -1,8 +1,8 @@
 Algoritmo en pseudocodigo de la descomposición en factores primos:
 
-N = 12
-divisor = 2
-while (N >= 2) {
+    N = 12
+    divisor = 2
+    while (N >= 2) {
 
     // ===== calcular residuo =====
     cociente = N / divisor
