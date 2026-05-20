@@ -28,14 +28,18 @@ module VonNeumannProcessor_Testbench();
 
 	always #(periodo/2) clk = ~clk;
 
-	// Monitor diferencial: solo imprime cuando el acumulador cambia
-	reg [9:0] prev_acc;
-	initial prev_acc = 10'hx;
-
+	// Mostrar únicamente factores primos encontrados
 	always @(posedge clk) begin
-		if (data_out !== prev_acc) begin
-			$display("T=%0t | Acumulador: %d", $time, data_out);
-			prev_acc <= data_out;
+		if (
+			dut.program_counter == 6'd21 &&
+			dut.instruction_register == OP_LW &&
+			dut.operand == 5'd29
+		) begin
+			$display(
+				"Factorizando %d -> Factor primo encontrado: %d",
+				dut.memory[28],
+				dut.memory[29]
+			);
 		end
 	end
 
