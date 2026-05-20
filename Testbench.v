@@ -1,68 +1,215 @@
-//Testbench
 module VonNeumannProcessor_Testbench();
+	localparam DATA_WIDTH = 10;
+	localparam periodo = 2;
+	// Opcodes
+	localparam OP_MOV  = 5'b00000;
+	localparam OP_SUB  = 5'b00010;
+	localparam OP_MUL  = 5'b00011;
+	localparam OP_DIV  = 5'b00100;
+	localparam OP_ADDI = 5'b00101;
+	localparam OP_BGE  = 5'b10111;
+	localparam OP_BLT  = 5'b10110;
+	localparam OP_J    = 5'b11000;
+	localparam OP_LW   = 5'b11100;
+	localparam OP_SW   = 5'b11101;
 
-    // Parámetros de prueba
-    localparam ADDR_WIDTH = 6;
-    localparam DATA_WIDTH = 10;
-	localparam periodo=2;
-    // Señales del testbench
-    reg clk, wr;
-    reg reset;
-    reg [9:0] data_in;
-    reg [5:0] address;
-    wire [9:0] data_out;
+	// Señales
+	reg clk, wr, reset;
+	reg [9:0] data_in;
+	reg [5:0] address;
+	wire [9:0] data_out;
 	integer i;
-    // Instancia del procesador
-    VonNeumannProcessor dut (
-        .clk(clk),
-        .reset(reset),
-        .wr(wr),
-        .address(address),
-        .data_in(data_in),
-        .data_out(data_out)
-    );
 
-    // Generación de señales de clock
-    always #(periodo/2) clk = ~clk;
+	// Instancia
+	VonNeumannProcessor dut (
+		.clk(clk), .reset(reset), .wr(wr),
+		.address(address), .data_in(data_in), .data_out(data_out)
+	);
 
-    // Inicialización de señales
-    initial begin
-        clk = 0;
-        reset = 1;
-        data_in = 0;
-        wr = 1; //escribir instrucciones en memoria
+	always #(periodo/2) clk = ~clk;
 
-        // Esperar un poco para asegurarnos de que el reset sea efectivo
-        #(periodo*4);
-        reset = 0;
-	    
-        //inicializa memoria con 0
-		for (i=0; i< 64; i=i+1) begin
-			address=i; data_in=0;#(periodo*3); end
-		// Cargar programa en memoria 
-        // Instrucción 1: LOAD 34
-        // Instrucción 2: ADD 35
-        // Instrucción 3: STORE 36
-        address = 34; data_in = 5; #(periodo*3); // Cargar el primer número (5) en la dirección 34
-        address = 35; data_in = 7; #(periodo*3); // Cargar el segundo número (7) en la dirección 35
-        address = 33; data_in = 6; #(periodo*3);
-		address = 0; data_in = {4'b0010, 6'b100010}; #(periodo*3); // LOAD 34
-        address = 1; data_in = {4'b0101, 6'b100011}; #(periodo*3); // ADD 35
-        address = 2; data_in = {4'b0001, 6'b100100}; #(periodo*3); // STORE 36
-		address = 3; data_in = {4'b0110, 6'b100010}; #(periodo*3); // sub 34
-        address = 4; data_in = {4'b0001, 6'b100101}; #(periodo*3); // STORE 37
-		reset = 0;wr=0; #(periodo*3);
-        // Asegurar que el procesador complete la ejecución
-        #(periodo*100);
+	// Monitor diferencial: solo imprime cuando el acumulador cambia
+	reg [9:0] prev_acc;
+	initial prev_acc = 10'hx;
 
-        // Detener simulación
-        $stop;
-    end
+	always @(posedge clk) begin
+		if (data_out !== prev_acc) begin
+			$display("T=%0t | Acumulador: %d", $time, data_out);
+			prev_acc <= data_out;
+		end
+	end
 
-    // Monitorear el registro de acumulador
-    always @(posedge clk) begin
-        $display("Acumulador: %d", data_out);
-    end
+	initial begin
+		clk = 0;
+		reset = 1;
+		wr = 1;
+		data_in = 0;
 
+		#(periodo*4);
+
+		reset = 0;
+
+		// Limpiar memoria
+		for (i = 0; i < 64; i = i + 1) begin
+			address = i;
+			data_in = 0;
+			#(periodo*3);
+		end
+
+		// --- Mapa de datos (addr 28-31) ---
+		// addr 28: N (número a factorizar)
+		// addr 29: divisor
+		// addr 30: cociente temporal
+		// addr 31: producto/scratch
+
+		address = 28;
+		data_in = 10'd12;
+		#(periodo*3); // N = 12
+
+		// --- Programa (addr 0-27) ---
+
+		// INIT: divisor = 2
+		address = 0;
+		data_in = {OP_MOV, 5'd2};
+		#(periodo*3); // MOV 2
+
+		address = 1;
+		data_in = {OP_SW, 5'd29};
+		#(periodo*3); // SW 29
+
+		// MAIN_LOOP (addr 2): calcula residuo = N mod divisor
+
+		address = 2;
+		data_in = {OP_LW, 5'd28};
+		#(periodo*3); // LW 28
+
+		address = 3;
+		data_in = {OP_DIV, 5'd29};
+		#(periodo*3); // DIV 29
+
+		address = 4;
+		data_in = {OP_SW, 5'd30};
+		#(periodo*3); // SW 30
+
+		address = 5;
+		data_in = {OP_LW, 5'd30};
+		#(periodo*3); // LW 30
+
+		address = 6;
+		data_in = {OP_MUL, 5'd29};
+		#(periodo*3); // MUL 29
+
+		address = 7;
+		data_in = {OP_SW, 5'd31};
+		#(periodo*3); // SW 31
+
+		address = 8;
+		data_in = {OP_LW, 5'd28};
+		#(periodo*3); // LW 28
+
+		address = 9;
+		data_in = {OP_SUB, 5'd31};
+		#(periodo*3); // SUB 31
+
+		address = 10;
+		data_in = {OP_ADDI, 5'd1};
+		#(periodo*3); // ADDI 1
+
+		// FACTOR CHECK (addr 11)
+		// si residuo >= 1 -> NO es factor -> INCREMENT
+
+		address = 11;
+		data_in = {OP_BGE, 5'd2};
+		#(periodo*3); // BGE 2
+
+		// Delay slot inocuo
+		address = 12;
+		data_in = {OP_MOV, 5'd0};
+		#(periodo*3);
+
+		// SI es factor -> FACTOR_FOUND
+		address = 13;
+		data_in = {OP_J, 5'd20};
+		#(periodo*3); // J 20
+
+		// Delay slot inocuo
+		address = 14;
+		data_in = {OP_MOV, 5'd0};
+		#(periodo*3);
+
+		// INCREMENT
+
+		address = 15;
+		data_in = {OP_LW, 5'd29};
+		#(periodo*3); // LW 29
+
+		address = 16;
+		data_in = {OP_ADDI, 5'd1};
+		#(periodo*3); // ADDI 1
+
+		address = 17;
+		data_in = {OP_SW, 5'd29};
+		#(periodo*3); // SW 29
+
+		address = 18;
+		data_in = {OP_J, 5'd2};
+		#(periodo*3); // J 2
+
+		// Delay slot inocuo
+		address = 19;
+		data_in = {OP_MOV, 5'd0};
+		#(periodo*3);
+
+		// FACTOR_FOUND
+
+		address = 20;
+		data_in = {OP_LW, 5'd29};
+		#(periodo*3); // FACTOR PRIMO
+
+		address = 21;
+		data_in = {OP_LW, 5'd30};
+		#(periodo*3); // nuevo N
+
+		address = 22;
+		data_in = {OP_SW, 5'd28};
+		#(periodo*3); // N = cociente
+
+		// Verificar N < 2 para HALT
+
+		address = 23;
+		data_in = {OP_BLT, 5'd2};
+		#(periodo*3); // BLT 2
+
+		// Delay slot inocuo
+		address = 24;
+		data_in = {OP_MOV, 5'd0};
+		#(periodo*3);
+
+		// mismo divisor -> MAIN_LOOP
+		address = 25;
+		data_in = {OP_J, 5'd2};
+		#(periodo*3); // J 2
+
+		// Delay slot inocuo
+		address = 26;
+		data_in = {OP_MOV, 5'd0};
+		#(periodo*3);
+
+		// HALT infinito
+		address = 27;
+		data_in = {OP_J, 5'd27};
+		#(periodo*3);
+
+		// Iniciar ejecución desde addr 0
+		reset = 1;
+		#(periodo*2);
+
+		reset = 0;
+		wr = 0;
+
+		// Ciclos suficientes para factorizar 12 = 2 × 2 × 3
+		#(periodo*600);
+
+		$stop;
+	end
 endmodule
-
